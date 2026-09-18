@@ -1,5 +1,7 @@
 # Premier League Match Prediction App
 
+[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://share.streamlit.io/deploy?repository=sahil-kulavoor%2FFootball-Prediction-App&branch=main&mainModule=app.py)
+
 A machine learning–based web application that predicts the outcome of English Premier League matches (Home Win, Draw, Away Win) using historical match data, advanced feature engineering, FIFA team ratings, and an XGBoost classification model. The application is built with Streamlit and provides an interactive, visually rich user interface inspired by modern football analytics tools.
 
 ---
@@ -165,6 +167,21 @@ streamlit run app.py
 ```
 
 The app will open at `http://localhost:8501`.
+
+### 5. Optional: Deploy a Public Preview
+
+The app runs on [Streamlit Community Cloud](https://share.streamlit.io) for free.
+Click the **Open in Streamlit** badge at the top of this README, sign in with
+GitHub, and confirm — it reads `requirements.txt` and `app.py` automatically. The
+resulting public URL looks like:
+
+```
+https://sahil-kulavoor-football-prediction-app-app-<hash>.streamlit.app
+```
+
+The first load takes a couple of minutes while dependencies install. Predictions
+take roughly 20–30 seconds each, because the full feature pipeline is recomputed
+over the whole match history on every click.
 
 ---
 
