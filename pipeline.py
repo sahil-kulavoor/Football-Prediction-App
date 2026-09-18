@@ -13,6 +13,31 @@ import pandas as pd
 warnings.filterwarnings('ignore')
 
 
+def _prior_window_sum(values: np.ndarray, window: int) -> np.ndarray:
+    """Sum of the previous up-to-`window` entries, excluding the current one.
+
+    Equivalent to Series.shift(1).rolling(window, min_periods=1).sum().fillna(0),
+    computed with a running total so each element costs O(1) instead of O(window).
+    """
+    values = np.asarray(values, dtype=float)
+    running = np.concatenate(([0.0], np.cumsum(values)))
+    positions = np.arange(values.size)
+    lower = np.maximum(0, positions - window)
+    return running[positions] - running[lower]
+
+
+def _prior_window_count(size: int, window: int) -> np.ndarray:
+    """How many prior entries each position averages over (capped at `window`)."""
+    return np.minimum(np.arange(size), window).astype(float)
+
+
+def _prior_window_mean(values: np.ndarray, window: int) -> np.ndarray:
+    """Mean of the previous up-to-`window` entries; 0.0 where there are none."""
+    counts = _prior_window_count(np.asarray(values).size, window)
+    totals = _prior_window_sum(values, window)
+    return np.divide(totals, counts, out=np.zeros_like(totals), where=counts > 0)
+
+
 def load_football_data(paths: List[str]) -> List[pd.DataFrame]:
     return [pd.read_csv(path) for path in paths]
 
@@ -167,37 +192,34 @@ def add_goal_difference_features(df: pd.DataFrame, window_size: int = 10) -> pd.
     # Process each team separately
     teams = pd.concat([df['HomeTeam'], df['AwayTeam']]).unique()
 
+    # Vectorised per team. The mean of a team's goal difference over its previous
+    # up-to-`window_size` games is a shifted rolling mean, so the per-match rescan
+    # of every earlier game is unnecessary.
+    home_names = df['HomeTeam'].to_numpy()
+    away_names = df['AwayTeam'].to_numpy()
+    goals_for_home = df['FTHG'].to_numpy()
+    goals_for_away = df['FTAG'].to_numpy()
+    labels = df.index.to_numpy()
+
     for team in teams:
-        # Extract all matches involving this team
-        team_games = df[(df['HomeTeam'] == team) | (df['AwayTeam'] == team)].sort_values("Date")
+        # Positions of this team's matches, in the frame's (date-sorted) order.
+        pos = np.flatnonzero((home_names == team) | (away_names == team))
+        if pos.size == 0:
+            continue
 
-        gd_values = []
-        for i in range(len(team_games)):
-            past_games = team_games.iloc[:i]  # only games before current
-            if len(past_games) > 0:
-                last_n = past_games.tail(window_size)
+        played_at_home = home_names[pos] == team
+        goal_diff = np.where(
+            played_at_home,
+            goals_for_home[pos] - goals_for_away[pos],
+            goals_for_away[pos] - goals_for_home[pos],
+        ).astype(float)
 
-                # Compute goal difference for each match
-                goal_diffs = []
-                for _, match in last_n.iterrows():
-                    if match['HomeTeam'] == team:
-                        goal_diffs.append(match['FTHG'] - match['FTAG'])
-                    else:  # played as away
-                        goal_diffs.append(match['FTAG'] - match['FTHG'])
+        # Excludes the current match from its own feature (no leakage).
+        prior_mean = _prior_window_mean(goal_diff, window_size)
 
-                gd_values.append(sum(goal_diffs) / len(goal_diffs))  # avg GD
-            else:
-                gd_values.append(0)
-
-        # Assign back to df
-        df.loc[team_games.index, 'HomeGD_LastN'] = [
-            gd if team_games.iloc[i]['HomeTeam'] == team else df.loc[team_games.index[i], 'HomeGD_LastN']
-            for i, gd in enumerate(gd_values)
-        ]
-        df.loc[team_games.index, 'AwayGD_LastN'] = [
-            gd if team_games.iloc[i]['AwayTeam'] == team else df.loc[team_games.index[i], 'AwayGD_LastN']
-            for i, gd in enumerate(gd_values)
-        ]
+        team_labels = labels[pos]
+        df.loc[team_labels[played_at_home], 'HomeGD_LastN'] = prior_mean[played_at_home]
+        df.loc[team_labels[~played_at_home], 'AwayGD_LastN'] = prior_mean[~played_at_home]
 
     return df
 
@@ -237,55 +259,56 @@ def add_h2h_features(df: pd.DataFrame, window_size: int = 5) -> pd.DataFrame:
     df['H2H_AwayGoals'] = 0.0
     df['H2H_Meetings'] = 0.0
 
-    # Group by unique matchup pair (order-independent)
+    home_names = df['HomeTeam'].to_numpy()
+    away_names = df['AwayTeam'].to_numpy()
+    results = df['FTR'].to_numpy()
+    goals_for_home = df['FTHG'].to_numpy()
+    goals_for_away = df['FTAG'].to_numpy()
+    labels = df.index.to_numpy()
+
+    n_rows = len(df)
+    out_home_wins = np.zeros(n_rows)
+    out_away_wins = np.zeros(n_rows)
+    out_home_goals = np.zeros(n_rows)
+    out_away_goals = np.zeros(n_rows)
+    out_meetings = np.zeros(n_rows)
+
+    # Group by unique matchup pair (order-independent). Both (A,B) and (B,A)
+    # select the same set of rows and write to it; the later group wins, exactly
+    # as before -- the grouping order is unchanged, so the outcome is unchanged.
     for (home, away), group in df.groupby(['HomeTeam', 'AwayTeam']):
-        # Filter matches between these two teams in either home/away order
-        mask = ((df['HomeTeam'] == home) & (df['AwayTeam'] == away)) | \
-               ((df['HomeTeam'] == away) & (df['AwayTeam'] == home))
-        matchup_games = df.loc[mask].sort_values("Date")
+        # Matches between these two teams in either home/away order.
+        pos = np.flatnonzero(
+            ((home_names == home) & (away_names == away))
+            | ((home_names == away) & (away_names == home))
+        )
+        if pos.size == 0:
+            continue
 
-        # Rolling stats
-        h2h_home_wins = []
-        h2h_away_wins = []
-        h2h_home_goals = []
-        h2h_away_goals = []
-        meetings = []
+        # Orientation of each meeting relative to this group's "home" team.
+        home_was_at_home = home_names[pos] == home
+        meeting_results = results[pos]
 
-        for i in range(len(matchup_games)):
-            past_games = matchup_games.iloc[:i]  # only before current
-            if len(past_games) > 0:
-                last_n = past_games.tail(window_size)
+        home_won = ((home_was_at_home) & (meeting_results == 'H')) | \
+                   ((~home_was_at_home) & (meeting_results == 'A'))
+        away_won = ((~home_was_at_home) & (meeting_results == 'H')) | \
+                   ((home_was_at_home) & (meeting_results == 'A'))
 
-                # Wins
-                hw = ((last_n['HomeTeam'] == home) & (last_n['FTR'] == 'H')).sum() + \
-                     ((last_n['AwayTeam'] == home) & (last_n['FTR'] == 'A')).sum()
-                aw = ((last_n['HomeTeam'] == away) & (last_n['FTR'] == 'H')).sum() + \
-                     ((last_n['AwayTeam'] == away) & (last_n['FTR'] == 'A')).sum()
+        home_goals = np.where(home_was_at_home, goals_for_home[pos], goals_for_away[pos])
+        away_goals = np.where(home_was_at_home, goals_for_away[pos], goals_for_home[pos])
 
-                # Goals
-                hg = ((last_n['HomeTeam'] == home) * last_n['FTHG']).sum() + \
-                     ((last_n['AwayTeam'] == home) * last_n['FTAG']).sum()
-                ag = ((last_n['HomeTeam'] == away) * last_n['FTHG']).sum() + \
-                     ((last_n['AwayTeam'] == away) * last_n['FTAG']).sum()
+        out_home_wins[pos] = _prior_window_sum(home_won, window_size)
+        out_away_wins[pos] = _prior_window_sum(away_won, window_size)
+        out_home_goals[pos] = _prior_window_sum(home_goals, window_size)
+        out_away_goals[pos] = _prior_window_sum(away_goals, window_size)
+        # Number of prior meetings counted, capped at the window.
+        out_meetings[pos] = np.minimum(np.arange(pos.size), window_size)
 
-                h2h_home_wins.append(hw)
-                h2h_away_wins.append(aw)
-                h2h_home_goals.append(hg)
-                h2h_away_goals.append(ag)
-                meetings.append(len(last_n))
-            else:
-                h2h_home_wins.append(0)
-                h2h_away_wins.append(0)
-                h2h_home_goals.append(0)
-                h2h_away_goals.append(0)
-                meetings.append(0)
-
-        # Assign back
-        df.loc[matchup_games.index, 'H2H_HomeWins'] = h2h_home_wins
-        df.loc[matchup_games.index, 'H2H_AwayWins'] = h2h_away_wins
-        df.loc[matchup_games.index, 'H2H_HomeGoals'] = h2h_home_goals
-        df.loc[matchup_games.index, 'H2H_AwayGoals'] = h2h_away_goals
-        df.loc[matchup_games.index, 'H2H_Meetings'] = meetings
+    df['H2H_HomeWins'] = out_home_wins
+    df['H2H_AwayWins'] = out_away_wins
+    df['H2H_HomeGoals'] = out_home_goals
+    df['H2H_AwayGoals'] = out_away_goals
+    df['H2H_Meetings'] = out_meetings
 
     return df
 
@@ -366,36 +389,34 @@ def add_points_per_game_features(df: pd.DataFrame, windows=[5, 10, 15]) -> pd.Da
 
     teams = pd.concat([df['HomeTeam'], df['AwayTeam']]).unique()
 
+    # Vectorised per team: PPG before a match is the mean of that team's points
+    # over its previous up-to-`w` games, i.e. a shifted rolling mean.
+    home_names = df['HomeTeam'].to_numpy()
+    away_names = df['AwayTeam'].to_numpy()
+    points_as_home = df['HomePoints'].to_numpy()
+    points_as_away = df['AwayPoints'].to_numpy()
+
+    n_rows = len(df)
+    columns = {}
+    for w in windows:
+        columns[f'HomePPG_{w}'] = np.full(n_rows, np.nan)
+        columns[f'AwayPPG_{w}'] = np.full(n_rows, np.nan)
+
     for team in teams:
-        team_games = df[(df['HomeTeam'] == team) | (df['AwayTeam'] == team)].sort_values("Date")
+        pos = np.flatnonzero((home_names == team) | (away_names == team))
+        if pos.size == 0:
+            continue
+
+        played_at_home = home_names[pos] == team
+        points = np.where(played_at_home, points_as_home[pos], points_as_away[pos]).astype(float)
 
         for w in windows:
-            ppg_values = []
-            rolling_points = []
+            ppg = _prior_window_mean(points, w)
+            columns[f'HomePPG_{w}'][pos[played_at_home]] = ppg[played_at_home]
+            columns[f'AwayPPG_{w}'][pos[~played_at_home]] = ppg[~played_at_home]
 
-            for i, match in team_games.iterrows():
-                # Assign rolling PPG BEFORE this game
-                if len(rolling_points) >= w:
-                    recent_points = rolling_points[-w:]
-                else:
-                    recent_points = rolling_points
-
-                ppg = sum(recent_points) / len(recent_points) if recent_points else 0
-                ppg_values.append(ppg)
-
-                # Update rolling points with current match
-                if match['HomeTeam'] == team:
-                    rolling_points.append(match['HomePoints'])
-                else:
-                    rolling_points.append(match['AwayPoints'])
-
-            # Assign back
-            for j, ppg in enumerate(ppg_values):
-                idx = team_games.index[j]
-                if team_games.loc[idx, 'HomeTeam'] == team:
-                    df.at[idx, f'HomePPG_{w}'] = ppg
-                else:
-                    df.at[idx, f'AwayPPG_{w}'] = ppg
+    for name, values in columns.items():
+        df[name] = values
 
     # Drop helper columns
     df = df.drop(columns=['HomePoints','AwayPoints'])

@@ -33,19 +33,20 @@ def get_logo_path(team_name, logo_dir="logos"):
     filename = re.sub(r"[^a-z0-9_]", '', filename) + ".png"
     return os.path.join(logo_dir, filename)
 
-# --- Custom CSS for FIFA-style UI (Logo size fixed, Home/Away labels styled) ---
+# --- Custom CSS ---
+# Selectors target Streamlit's real DOM: `data-testid` attributes and the
+# `st-key-<key>` class Streamlit puts on any keyed widget or container. A bare
+# <div> emitted through st.markdown does NOT wrap the widgets that follow it,
+# so class names invented that way never match anything.
 st.markdown("""
 <style>
 
-/* === GLOBAL BACKGROUND (EA FC STYLE) === */
+/* === GLOBAL BACKGROUND === */
 .stApp {
     background: linear-gradient(145deg, #0a0d1a 0%, #0d1021 60%, #090b18 100%);
     color: #fff;
     font-family: 'Poppins', sans-serif;
-    overflow-x: hidden;
 }
-
-/* Subtle animated glowing background */
 .stApp::before {
     content: "";
     background: radial-gradient(circle at 20% 20%, rgba(0,255,135,0.15) 0%, transparent 70%),
@@ -60,14 +61,13 @@ st.markdown("""
     100% {opacity: 0.8;}
 }
 
-/* === HEADERS === */
+/* === TITLE === */
 h1, .stTitle {
     text-align: center !important;
     font-family: 'Orbitron', sans-serif;
     letter-spacing: 2px;
     color: #00ff87;
     text-shadow: 0 0 15px rgba(0,255,135,0.6);
-    margin-bottom: 40px !important;
     animation: fadeIn 1.2s ease-in;
 }
 @keyframes fadeIn {
@@ -75,144 +75,256 @@ h1, .stTitle {
     to {opacity: 1; transform: translateY(0);}
 }
 
-/* === TEAM PANELS (EA 3D Style) === */
-.team-panel {
+/* Header crest: kept crisp, no glow. */
+.st-key-brand_mark [data-testid="stImage"] img {
+    filter: none;
+}
+
+/* === TEAM PANELS === */
+.st-key-home_panel, .st-key-away_panel {
     background: linear-gradient(145deg, rgba(255,255,255,0.07), rgba(255,255,255,0.03));
     border-radius: 18px;
-    box-shadow: inset 0 0 25px rgba(255,255,255,0.05), 0 6px 25px rgba(0,0,0,0.5);
-    transition: all 0.4s ease;
-    padding: 25px 20px;
-    position: relative;
-    overflow: hidden;
+    padding: 22px 18px 10px 18px;
+    transition: transform 0.35s ease, box-shadow 0.35s ease;
 }
-.team-panel::after {
-    content: "";
-    position: absolute;
-    top: -30%;
-    left: -30%;
-    width: 160%;
-    height: 160%;
-    background: radial-gradient(circle, rgba(255,255,255,0.08) 0%, transparent 70%);
-    transform: rotate(30deg);
-    z-index: 0;
+.st-key-home_panel {
+    border: 2px solid rgba(0,255,135,0.45);
+    box-shadow: 0 0 25px rgba(0,255,135,0.22);
 }
-.team-panel:hover {
-    transform: translateY(-5px) scale(1.02);
-    box-shadow: 0 8px 30px rgba(0,255,135,0.25);
+.st-key-away_panel {
+    border: 2px solid rgba(56,189,248,0.45);
+    box-shadow: 0 0 25px rgba(56,189,248,0.22);
+}
+.st-key-home_panel:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 10px 34px rgba(0,255,135,0.34);
+}
+.st-key-away_panel:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 10px 34px rgba(56,189,248,0.34);
 }
 
-/* Home / Away borders */
-.home-panel {
-    border: 2px solid rgba(0,255,135,0.5);
-    box-shadow: 0 0 25px rgba(0,255,135,0.3);
+/* === TEAM NAME ROW === */
+.team-label {
+    font-size: 0.78rem;
+    font-weight: 600;
+    letter-spacing: 2px;
+    text-transform: uppercase;
 }
-.away-panel {
-    border: 2px solid rgba(56,189,248,0.5);
-    box-shadow: 0 0 25px rgba(56,189,248,0.3);
+.team-name {
+    font-family: 'Orbitron', sans-serif;
+    font-size: clamp(1rem, 2vw, 1.55rem);
+    font-weight: 700;
+    margin: 2px 0 0 0;
+    line-height: 1.2;
 }
 
-/* === TEAM LOGOS ===
-   Not scoped to .team-panel: those wrapper divs are not emitted, so a scoped
-   rule would never match and logos would render at their native size. */
-div[data-testid="stImage"] {
-    display: flex;
+/* Crest sits in a fixed-height box so both panels' stats line up. */
+/* Streamlit sizes the image's whole wrapper chain to the bitmap's width, so a
+   plain width:100% resolves against that same narrow box. Force every wrapper
+   to fill the panel, then centre inside it. */
+.st-key-home_panel [data-testid="stElementContainer"]:has([data-testid="stImage"]),
+.st-key-away_panel [data-testid="stElementContainer"]:has([data-testid="stImage"]),
+.st-key-home_panel [data-testid="stFullScreenFrame"],
+.st-key-away_panel [data-testid="stFullScreenFrame"],
+.st-key-home_panel [data-testid="stFullScreenFrame"] > div,
+.st-key-away_panel [data-testid="stFullScreenFrame"] > div,
+.st-key-home_panel [data-testid="stImageContainer"],
+.st-key-away_panel [data-testid="stImageContainer"] {
+    width: 100% !important;
+}
+.st-key-home_panel [data-testid="stImageContainer"],
+.st-key-away_panel [data-testid="stImageContainer"] {
     justify-content: center;
 }
-div[data-testid="stImage"] img {
+.st-key-home_panel [data-testid="stImage"],
+.st-key-away_panel [data-testid="stImage"] {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100% !important;
+    height: 150px;
+}
+.st-key-home_panel [data-testid="stImage"] img,
+.st-key-away_panel [data-testid="stImage"] img {
     max-height: 130px;
+    max-width: 100%;
     width: auto !important;
     object-fit: contain;
-    filter: drop-shadow(0 0 20px rgba(255,255,255,0.4));
-    transition: transform 0.4s ease;
+    filter: drop-shadow(0 0 18px rgba(255,255,255,0.35));
+    transition: transform 0.35s ease;
 }
-div[data-testid="stImage"] img:hover {
-    transform: scale(1.1);
+.st-key-home_panel [data-testid="stImage"] img:hover,
+.st-key-away_panel [data-testid="stImage"] img:hover {
+    transform: scale(1.08);
 }
 
-/* === TEAM LABELS === */
-.team-selector h2 {
-    font-family: 'Orbitron', sans-serif;
+/* === TEAM CYCLING ARROWS === */
+.st-key-home_prev button, .st-key-home_next button,
+.st-key-away_prev button, .st-key-away_next button {
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.18);
+    color: #fff;
+    border-radius: 10px;
+    width: 100%;
+    transition: all 0.2s ease;
+}
+.st-key-home_prev button:hover, .st-key-home_next button:hover {
+    border-color: rgba(0,255,135,0.8);
+    color: #00ff87;
+    box-shadow: 0 0 12px rgba(0,255,135,0.4);
+}
+.st-key-away_prev button:hover, .st-key-away_next button:hover {
+    border-color: rgba(56,189,248,0.8);
+    color: #38bdf8;
+    box-shadow: 0 0 12px rgba(56,189,248,0.4);
+}
+
+/* === METRICS === */
+[data-testid="stMetric"] {
+    text-align: center;
+}
+/* Streamlit renders the label as a grid whose inner track is shrink-wrapped to
+   the left, so grid alignment alone will not centre it. Make every wrapper
+   full-width and centre the text instead. */
+[data-testid="stMetricLabel"] {
+    display: block !important;
+    width: 100%;
+    text-align: center;
+}
+[data-testid="stMetricLabel"] > div,
+[data-testid="stMetricLabel"] [data-testid="stMarkdownContainer"],
+[data-testid="stMetricLabel"] p {
+    width: 100%;
+    text-align: center;
+}
+[data-testid="stMetricLabel"] p {
+    font-size: 0.72rem !important;
     text-transform: uppercase;
+    font-weight: 700;
     letter-spacing: 1px;
-    font-size: 1.4em;
+    color: #00ff87 !important;
 }
-span[style*="HOME"], span[style*="AWAY"] {
-    letter-spacing: 1px;
-    font-size: 0.8em;
+.st-key-away_panel [data-testid="stMetricLabel"] p {
+    color: #38bdf8 !important;
+}
+[data-testid="stMetricValue"] {
+    justify-content: center;
+    font-size: clamp(1.1rem, 2.1vw, 1.65rem) !important;
+    font-weight: 700;
+    text-shadow: 0 0 8px rgba(255,255,255,0.3);
 }
 
-/* === PREDICT BUTTON (EA Neon Animated) === */
-.vs-column .stButton > button[kind="primary"] {
+/* === VS + PREDICT === */
+.vs-mark {
+    text-align: center;
+    font-family: 'Orbitron', sans-serif;
+    font-size: clamp(1.7rem, 3.6vw, 3rem);
+    font-weight: 700;
+    color: #e90052;
+    text-shadow: 0 0 25px rgba(233,0,82,0.8);
+    line-height: 1;
+    margin-bottom: 14px;
+}
+
+.st-key-predict button {
     background: linear-gradient(90deg, #00ff87, #38bdf8, #e90052);
     background-size: 300% 300%;
-    color: #0a0c1a;
-    font-weight: bold;
-    font-size: 1.1em;
-    padding: 12px 32px;
-    border-radius: 10px;
+    color: #0a0c1a !important;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    padding: 12px 8px;
+    width: 100%;
+    border-radius: 12px;
     border: none;
+    white-space: nowrap;
     animation: neonShift 4s linear infinite;
     box-shadow: 0 0 20px rgba(0,255,135,0.5);
-    transition: transform 0.2s ease;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 @keyframes neonShift {
     0% {background-position: 0% 50%;}
     50% {background-position: 100% 50%;}
     100% {background-position: 0% 50%;}
 }
-.vs-column .stButton > button:hover {
-    transform: scale(1.05);
-    box-shadow: 0 0 25px rgba(0,255,135,0.8);
+.st-key-predict button:hover {
+    transform: scale(1.04);
+    box-shadow: 0 0 28px rgba(0,255,135,0.85);
+}
+.st-key-predict button:focus:not(:active) {
+    color: #0a0c1a !important;
+    border: none;
 }
 
-/* === RESULTS BOX (Animated Reveal) === */
-.results-box {
+/* === RESULTS === */
+.st-key-results {
     background: linear-gradient(135deg, rgba(0,255,135,0.08), rgba(233,0,82,0.08));
-    backdrop-filter: blur(18px);
     border-radius: 20px;
-    padding: 25px;
-    border: 1px solid rgba(255,255,255,0.1);
-    box-shadow: 0 0 25px rgba(255,255,255,0.15);
-    text-align: center;
+    padding: 22px 26px;
+    margin-top: 26px;
+    border: 1px solid rgba(255,255,255,0.12);
+    box-shadow: 0 0 25px rgba(255,255,255,0.10);
     animation: fadeUp 0.6s ease-out;
 }
 @keyframes fadeUp {
     from {opacity: 0; transform: translateY(20px);}
     to {opacity: 1; transform: translateY(0);}
 }
-
-/* === METRICS === */
-.team-stats .stMetric > label, .results-box .stMetric > label {
-    font-size: 0.8em;
-    text-transform: uppercase;
-    font-weight: 700;
-    color: #00ff87 !important;
-}
-.team-stats .stMetric > div, .results-box .stMetric > div {
-    font-size: 1.5em;
-    font-weight: 700;
-    text-shadow: 0 0 8px rgba(255,255,255,0.3);
-}
-
-/* === VS SECTION === */
-.vs-column h1 {
-    font-size: 4em;
-    color: #e90052;
-    text-shadow: 0 0 25px rgba(233,0,82,0.8);
+.result-headline {
+    text-align: center;
     font-family: 'Orbitron', sans-serif;
-    letter-spacing: 3px;
-}
-
-/* === SCOREBOARD GLOW === */
-.results-box h2 {
+    font-size: clamp(1.15rem, 2.8vw, 1.9rem);
+    font-weight: 700;
+    margin: 4px 0;
     color: #00ff87;
-    text-shadow: 0 0 15px rgba(0,255,135,0.7);
-    font-family: 'Orbitron', sans-serif;
+    text-shadow: 0 0 15px rgba(0,255,135,0.6);
 }
-.results-box h3, .results-box h4 {
-    font-weight: 600;
-    color: #fff;
-    text-shadow: 0 0 10px rgba(255,255,255,0.3);
+.result-sub {
+    text-align: center;
+    font-size: 0.8rem;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    opacity: 0.7;
+    margin-bottom: 18px;
+}
+.prob-caption {
+    text-align: center;
+    font-size: 0.78rem;
+    opacity: 0.6;
+    margin-top: 14px;
+}
+
+/* === SMALL SCREENS === */
+@media (max-width: 640px) {
+    /* Streamlit stacks columns below this width by forcing a full-width
+       min-width. The home/vs/away split SHOULD stack, but the selector arrows
+       and the ATT/MID/DEF row must stay on one line, so override them here. */
+    .st-key-home_panel [data-testid="stHorizontalBlock"],
+    .st-key-away_panel [data-testid="stHorizontalBlock"],
+    .st-key-results [data-testid="stHorizontalBlock"] {
+        flex-wrap: nowrap !important;
+        gap: 0.4rem !important;
+    }
+    .st-key-home_panel [data-testid="stColumn"],
+    .st-key-away_panel [data-testid="stColumn"],
+    .st-key-results [data-testid="stColumn"] {
+        min-width: 0 !important;
+    }
+    [data-testid="stMetricValue"] {
+        font-size: 1.15rem !important;
+    }
+
+    .st-key-home_panel, .st-key-away_panel {
+        padding: 16px 12px 6px 12px;
+    }
+    .st-key-home_panel [data-testid="stImage"],
+    .st-key-away_panel [data-testid="stImage"] {
+        height: 96px;
+    }
+    .st-key-home_panel [data-testid="stImage"] img,
+    .st-key-away_panel [data-testid="stImage"] img {
+        max-height: 80px;
+    }
 }
 
 </style>
@@ -328,17 +440,16 @@ if 'prediction_made' not in st.session_state:
     st.session_state.prediction_made = False
 
 # --- UI Layout ---
-col_title1, col_title2 = st.columns([1, 9])
-with col_title1:
-    pl_logo_path = "logos/pl_logo.png"
-    if os.path.exists(pl_logo_path):
-        st.image(pl_logo_path, width=100)
-    else:
-        st.image("https://placehold.co/100x100/ffffff/000000?text=PL", width=100)
-with col_title2:
+col_brand, col_heading = st.columns([1, 9], vertical_alignment="center")
+with col_brand:
+    with st.container(key="brand_mark"):
+        pl_logo_path = "logos/pl_logo.png"
+        if os.path.exists(pl_logo_path):
+            st.image(pl_logo_path, width=84)
+        else:
+            st.image("https://placehold.co/84x84/ffffff/000000?text=PL", width=84)
+with col_heading:
     st.title('Premier League Match Predictor')
-
-
 
 
 # --- Get current team data ---
@@ -352,77 +463,51 @@ away_logo_path = get_logo_path(st.session_state.away_team)
 home_logo = home_logo_path if os.path.exists(home_logo_path) else "https://placehold.co/150x50/4f46e5/FFF?text=?"
 away_logo = away_logo_path if os.path.exists(away_logo_path) else "https://placehold.co/150x50/004d80/FFF?text=?"
 
+
+def render_team_panel(side, team, logo, stats, label, accent, container_key):
+    """One team card: selector arrows, crest, and FIFA ratings."""
+    with st.container(key=container_key):
+        col_prev, col_name, col_next = st.columns([1, 5, 1], vertical_alignment="center")
+        with col_prev:
+            st.button("❮", key=f"{side}_prev", on_click=change_team,
+                      args=(f"{side}_team", 'prev', team_list))
+        with col_name:
+            st.markdown(
+                f'<div style="text-align:center;">'
+                f'<div class="team-label" style="color:{accent};">{label}</div>'
+                f'<div class="team-name">{team}</div>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+        with col_next:
+            st.button("❯", key=f"{side}_next", on_click=change_team,
+                      args=(f"{side}_team", 'next', team_list))
+
+        st.image(logo)
+
+        stat_cols = st.columns(3)
+        stat_cols[0].metric("ATT", stats["ATT"])
+        stat_cols[1].metric("MID", stats["MID"])
+        stat_cols[2].metric("DEF", stats["DEF"])
+        if not stats["rated"]:
+            st.caption("No FIFA rating in the bundled dataset for this club.")
+
+
 # --- MAIN MATCHUP UI ---
-# --- MAIN MATCHUP UI (with side spacing columns added) ---
-# Layout: [blank_left, home, vs, away, blank_right]
-blank_left, col_home, col_vs, col_away, blank_right = st.columns([0.2, 0.3, 0.1, 0.3, 0.2])
+col_home, col_vs, col_away = st.columns([1, 0.45, 1], vertical_alignment="center")
 
-# --- HOME PANEL ---
 with col_home:
-    # st.markdown('<div class="team-panel home-panel">', unsafe_allow_html=True)
-    # st.markdown('<div class="team-selector">', unsafe_allow_html=True)
-    c_prev, c_name, c_next = st.columns([1, 4, 1])
-    with c_prev:
-        st.button("❮", key="home_prev", on_click=change_team, args=('home_team', 'prev', team_list))
-    with c_name:
-        st.markdown(f"""
-            <div style="text-align: center;">
-                <span style="color: #00ff87; font-size: 0.9em; font-weight: 600; text-shadow: 0 0 5px rgba(0,255,135,0.5);">HOME</span>
-                <h2 style="margin: 0; padding: 0;">{st.session_state.home_team}</h2>
-            </div>
-        """, unsafe_allow_html=True)
-    with c_next:
-        st.button("❯", key="home_next", on_click=change_team, args=('home_team', 'next', team_list))
-    st.markdown('</div>', unsafe_allow_html=True)
-    st.image(home_logo)
-    st.markdown('<div class="team-stats">', unsafe_allow_html=True)
-    s_col1, s_col2, s_col3 = st.columns(3)
-    s_col1.metric("ATT", home_stats["ATT"])
-    s_col2.metric("MID", home_stats["MID"])
-    s_col3.metric("DEF", home_stats["DEF"])
-    if not home_stats["rated"]:
-        st.caption("No FIFA rating in the bundled dataset for this club.")
-    st.markdown('</div>', unsafe_allow_html=True)
-    st.markdown('</div>', unsafe_allow_html=True)
+    render_team_panel("home", st.session_state.home_team, home_logo, home_stats,
+                      "Home", "#00ff87", "home_panel")
 
-# --- VS & PREDICT BUTTON ---
 with col_vs:
-    st.markdown('<div class="vs-column">', unsafe_allow_html=True)
-    st.markdown('<h1>VS</h1>', unsafe_allow_html=True)
-    st.markdown("<div style='margin-top: 50px;'>", unsafe_allow_html=True)
-    if st.button('Predict', type="primary", key="predict"):
+    st.markdown('<div class="vs-mark">VS</div>', unsafe_allow_html=True)
+    if st.button('Predict', type="primary", key="predict", use_container_width=True):
         st.session_state.prediction_made = True
-    st.markdown("</div>", unsafe_allow_html=True)
-    st.markdown('</div>', unsafe_allow_html=True)
 
-# --- AWAY PANEL ---
 with col_away:
-    # st.markdown('<div class="team-panel away-panel">', unsafe_allow_html=True)
-    # st.markdown('<div class="team-selector">', unsafe_allow_html=True)
-    c_prev, c_name, c_next = st.columns([1, 4, 1])
-    with c_prev:
-        st.button("❮", key="away_prev", on_click=change_team, args=('away_team', 'prev', team_list))
-    with c_name:
-        st.markdown(f"""
-            <div style="text-align: center;">
-                <span style="color: #38bdf8; font-size: 0.9em; font-weight: 600; text-shadow: 0 0 5px rgba(56,189,248,0.5);">AWAY</span>
-                <h2 style="margin: 0; padding: 0;">{st.session_state.away_team}</h2>
-            </div>
-        """, unsafe_allow_html=True)
-    with c_next:
-        st.button("❯", key="away_next", on_click=change_team, args=('away_team', 'next', team_list))
-    st.markdown('</div>', unsafe_allow_html=True)
-    st.image(away_logo)
-    st.markdown('<div class="team-stats">', unsafe_allow_html=True)
-    s_col4, s_col5, s_col6 = st.columns(3)
-    s_col4.metric("ATT", away_stats["ATT"])
-    s_col5.metric("MID", away_stats["MID"])
-    s_col6.metric("DEF", away_stats["DEF"])
-    if not away_stats["rated"]:
-        st.caption("No FIFA rating in the bundled dataset for this club.")
-    st.markdown('</div>', unsafe_allow_html=True)
-    st.markdown('</div>', unsafe_allow_html=True)
-
+    render_team_panel("away", st.session_state.away_team, away_logo, away_stats,
+                      "Away", "#38bdf8", "away_panel")
 
 # --- PREDICTION LOGIC & RESULTS ---
 if st.session_state.prediction_made:
@@ -465,38 +550,56 @@ if st.session_state.prediction_made:
             class_map = {2: 'Home Win', 1: 'Draw', 0: 'Away Win'}
         
         # --- Display Results ---
-        with st.container():
-            st.markdown('<div class="results-box">', unsafe_allow_html=True)
-            st.subheader(f'Prediction: {st.session_state.home_team} vs. {st.session_state.away_team}')
-            
-            result_text = class_map[prediction]
-            if prediction == 2:
-                st.success(f'**Result: {result_text} ({st.session_state.home_team})**')
-                st.balloons()
-            elif prediction == 0:
-                st.success(f'**Result: {result_text} ({st.session_state.away_team})**')
-                st.balloons()
-            else:
-                st.info(f'**Result: {result_text}**')
+        result_text = class_map[prediction]
+        if prediction == 2:
+            headline = f'{result_text} — {st.session_state.home_team}'
+        elif prediction == 0:
+            headline = f'{result_text} — {st.session_state.away_team}'
+        else:
+            headline = result_text
 
-            st.write("### Probability Breakdown")
-            
+        with st.container(key="results"):
+            st.markdown(
+                f'<div class="result-sub">'
+                f'{st.session_state.home_team} vs {st.session_state.away_team}</div>'
+                f'<div class="result-headline">{headline}</div>',
+                unsafe_allow_html=True,
+            )
+
             res_col1, res_col2, res_col3 = st.columns(3)
             res_col1.metric(
-                label=f"{st.session_state.home_team} (Home Win)", 
+                label=f"{st.session_state.home_team} (Home Win)",
                 value=f"{prediction_proba[2]:.1%}"
             )
             res_col2.metric(
-                label="Draw", 
+                label="Draw",
                 value=f"{prediction_proba[1]:.1%}"
             )
             res_col3.metric(
-                label=f"{st.session_state.away_team} (Away Win)", 
+                label=f"{st.session_state.away_team} (Away Win)",
                 value=f"{prediction_proba[0]:.1%}"
             )
-            
-            with st.expander("Show Features Used for Prediction"):
-                st.dataframe(X_pred)
-            
-            st.markdown('</div>', unsafe_allow_html=True)
+
+            st.progress(float(prediction_proba[2]), text="Home")
+            st.progress(float(prediction_proba[1]), text="Draw")
+            st.progress(float(prediction_proba[0]), text="Away")
+
+            st.markdown(
+                '<div class="prob-caption">Bookmaker odds are unavailable for an '
+                'unplayed fixture, so these probabilities sit closer to even than '
+                'the model\'s training scores suggest. See the README.</div>',
+                unsafe_allow_html=True,
+            )
+
+            with st.expander("Show features used for this prediction"):
+                st.dataframe(X_pred, use_container_width=True)
+
+        # Celebrate once per new prediction, not on every rerun.
+        if prediction != 1 and st.session_state.get('celebrated_for') != (
+            st.session_state.home_team, st.session_state.away_team
+        ):
+            st.session_state.celebrated_for = (
+                st.session_state.home_team, st.session_state.away_team
+            )
+            st.balloons()
 

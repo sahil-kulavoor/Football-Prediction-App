@@ -179,9 +179,8 @@ resulting public URL looks like:
 https://sahil-kulavoor-football-prediction-app-app-<hash>.streamlit.app
 ```
 
-The first load takes a couple of minutes while dependencies install. Predictions
-take roughly 20–30 seconds each, because the full feature pipeline is recomputed
-over the whole match history on every click.
+The first load takes a couple of minutes while dependencies install. After that,
+each prediction returns in roughly 1–2 seconds.
 
 ---
 
