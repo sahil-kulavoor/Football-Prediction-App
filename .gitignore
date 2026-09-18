@@ -24,3 +24,6 @@ desktop.ini
 
 # Notebooks
 .ipynb_checkpoints/
+
+# Local preview scaffolding (machine-specific paths)
+.claude/
